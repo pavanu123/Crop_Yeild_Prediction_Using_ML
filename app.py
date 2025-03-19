@@ -2,7 +2,6 @@ import streamlit as st
 import numpy as np
 import pickle as pkl
 import pandas as pd
-from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import OneHotEncoder
 import os
 
@@ -156,14 +155,8 @@ def predict_crop(input_data):
         st.error(f"Prediction error: {str(e)}")
         return None, None
 
-# Create columns for buttons
-button_col1, button_col2 = st.columns([1, 1])
-
-with button_col1:
-    analyze_button = st.button("🔍 Analyze", use_container_width=True, type="primary")
-
-with button_col2:
-    accuracy_button = st.button("📊 Show Model Accuracy", use_container_width=True)
+# Create a single column for the analyze button
+analyze_button = st.button("🔍 Analyze", use_container_width=True, type="primary")
 
 # Display results
 if analyze_button:
@@ -201,8 +194,7 @@ if analyze_button:
         'Chilies': "Requires warm climate, moderate rainfall, and well-drained soil rich in organic matter.",
         'Green Peas': "Grows best in cool climate with well-drained soil and pH 6.0-7.5.",
         'Mango': "Requires tropical climate, moderate rainfall, and deep soil with good drainage.",
-        'Papaya': "Grows in tropical and subtropical climates, requires well-drained soil rich in organic matter."
-
+        'Papaya': "Grows in tropical and subtropical climates, requires well-drained soil rich in organic matter."
         }
         
         if recommended_crop in crop_info:
@@ -220,85 +212,8 @@ if analyze_button:
             
     st.markdown('</div>', unsafe_allow_html=True)
 
-# Calculate and show model accuracy if requested
-if accuracy_button and model is not None:
-    try:
-        # Path to test data - using a relative path to make it more portable
-        data_path = "crop_production.csv"
-        
-        if not os.path.exists(data_path):
-            st.warning(f"Test data file not found at {data_path}. Please upload the file or provide the correct path.")
-            
-            # Allow user to upload a CSV file
-            uploaded_file = st.file_uploader("Upload crop_production.csv", type="csv")
-            if uploaded_file is not None:
-                test_data = pd.read_csv(uploaded_file)
-                st.success("File uploaded successfully!")
-            else:
-                st.stop()
-        else:
-            test_data = pd.read_csv(data_path)
-        
-        columns_to_consider = ['N', 'P', 'K', 'temperature','humidity', 'ph','rainfall']
-        # Prepare data
-        X = test_data[columns_to_consider]
-        y = test_data['Crop'].values.reshape(-1, 1)
-        
-        # Apply OneHotEncoder
-        encoder = OneHotEncoder(sparse_output=False)
-        y_one_hot = encoder.fit_transform(y)
-        
-        # Make predictions
-        y_pred = model.predict(X)
-        
-        # Convert predictions and true values to class labels
-        y_pred_class = np.argmax(y_pred, axis=1)
-        y_true_class = np.argmax(y_one_hot, axis=1)
-        
-        # Calculate accuracy
-        accuracy = accuracy_score(y_true_class, y_pred_class)
-        
-        # Display accuracy with visualization
-        st.markdown('<div class="result-section">', unsafe_allow_html=True)
-        st.markdown("### 📊 Model Performance")
-        
-        col1, col2 = st.columns([1, 2])
-        
-        with col1:
-            st.metric("Accuracy", f"{accuracy*100:.2f}%")
-            
-        with col2:
-            # Create a progress bar for accuracy
-            st.progress(accuracy)
-            st.caption("Model accuracy based on test data")
-        
-        # Show sample predictions
-        with st.expander("View Sample Predictions"):
-            sample_size = min(5, len(X))
-            sample_indices = np.random.choice(len(X), sample_size, replace=False)
-            
-            sample_X = X.iloc[sample_indices]
-            sample_y_true = [crop_names[idx] for idx in y_true_class[sample_indices]]
-            sample_y_pred = [crop_names[idx] for idx in y_pred_class[sample_indices]]
-            
-            sample_df = pd.DataFrame({
-                'True Crop': sample_y_true,
-                'Predicted Crop': sample_y_pred,
-                'Correct Prediction': [t == p for t, p in zip(sample_y_true, sample_y_pred)]
-            })
-            
-            st.dataframe(sample_df, use_container_width=True)
-            
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-    except Exception as e:
-        st.error(f"Error calculating accuracy: {str(e)}")
-
 # Footer
 st.markdown('<p class="footer">Developed for Agricultural Planning and Crop Selection</p>', unsafe_allow_html=True)
-
-
-
 
 # Load the pre-trained model
 with open('crop_production_model.pkl', 'rb') as model_file:
@@ -326,7 +241,7 @@ def main():
     'Korra', 'Lemon', 'Linseed', 'Mango', 'Masoor', 'Mesta', 'Maize', 'Moth', 'Moong(Green Gram)', 'Niger seed', 
     'Onion', 'Orange', 'Other Cereals & Millets', 'Other  Rabi pulses', 'Paddy', 'Papaya', 'Peas & beans (Pulses)', 
     'Pineapple', 'Potato', 'Pome Granet', 'Rapeseed &Mustard', 'Rice', 'Ragi', 'Safflower', 'Sesamum', 'Small millets', 
-    'Soyabean', 'Sunflower', 'Sweet potato', 'Tapioca', 'Tomato', 'Tobacco', 'Turmeric', 'Urad', 'Varagu', 'Wheat']  # Add all crops you have
+    'Soyabean', 'Sunflower', 'Sweet potato', 'Tapioca', 'Tomato', 'Tobacco', 'Turmeric', 'Urad', 'Varagu', 'Wheat']
     )
 
     # User input for 'Area'
