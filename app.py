@@ -4,13 +4,18 @@ import pickle as pkl
 import pandas as pd
 from sklearn.preprocessing import OneHotEncoder
 import os
+import PyPDF2
+import re
+import nltk
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
-# Page configuration
-st.set_page_config(
-    page_title="Crop Yield Prediction",
-    page_icon="🌾",
-    layout="wide"
-)
+# Must be the first Streamlit command
+# Keep only this one at the top
+st.set_page_config(page_title="Agribot", page_icon="🌾", layout="wide")
 
 # Custom CSS for better styling
 st.markdown("""
@@ -48,6 +53,7 @@ st.markdown("""
 
 # Header
 st.markdown('<p class="main-header">🌾 Crop Yield Prediction using Machine Learning</p>', unsafe_allow_html=True)
+
 
 # Sidebar for app information
 with st.sidebar:
@@ -220,7 +226,7 @@ with open('crop_production_model.pkl', 'rb') as model_file:
     model = pkl.load(model_file)
 
 # Streamlit application
-def main():
+
     st.title("Crop Production ")
     
     # Instructions
@@ -257,6 +263,160 @@ def main():
         
         # Show the predicted result
         st.write(f"Predicted Crop Production: {prediction[0]:.2f} units")
+
+
+
+
+
+######      AGRIBOT.PY
+
+
+
+
+# Download NLTK resources
+@st.cache_resource
+
+def get_tfidf_matrix(chunks):
+    vectorizer = TfidfVectorizer(stop_words='english')
+    return vectorizer.fit_transform(chunks)
+
+# Example process using threading
+def process_pdf_in_background(pdf_file_path):
+    result = st.session_state.chatbot.process_pdf(pdf_file_path)
+    st.session_state.pdf_info = result
+    st.session_state.pdf_uploaded = True
+
+import threading
+
+# Define pdf_file_path
+pdf_file_path = r"C:\Users\Suhas\OneDrive\Desktop\Crop_Yeild_Prediction_Using_ML-main\AGRICULTURE.pdf"  # Adjust path if needed
+
+# Running processing in background
+if pdf_file_path:
+    thread = threading.Thread(target=process_pdf_in_background, args=(pdf_file_path,))
+    thread.start()
+    st.spinner("Processing in background...")
+
+def download_nltk_resources():
+    try:
+        nltk.data.find('tokenizers/punkt')
+        nltk.data.find('corpora/stopwords')
+        nltk.data.find('corpora/wordnet')
+    except LookupError:
+        nltk.download('punkt')
+        nltk.download('stopwords')
+        nltk.download('wordnet')
+
+download_nltk_resources()
+
+class CropYieldChatbot:
+    def __init__(self):
+        self.lemmatizer = WordNetLemmatizer()
+        self.stop_words = set(stopwords.words('english'))
+        self.vectorizer = TfidfVectorizer(stop_words='english')
+        self.pdf_content = []
+        self.pdf_chunks = []
+        self.tfidf_matrix = None
+        self.pdf_loaded = False
+
+    def extract_text_from_pdf(self, pdf_file):
+        """Extract text from PDF"""
+        try:
+            pdf_reader = PyPDF2.PdfReader(pdf_file)
+            return "".join([page.extract_text() for page in pdf_reader.pages]), len(pdf_reader.pages)
+        except Exception as e:
+            return f"Error: {str(e)}", 0
+
+    def process_pdf(self, pdf_file_path):
+        """Process PDF and prepare for question answering"""
+        full_text, num_pages = self.extract_text_from_pdf(pdf_file_path)
+        if full_text.startswith("Error"):
+            return full_text
+        
+        self.pdf_content = full_text
+        self.pdf_chunks = [chunk.strip() for chunk in re.split(r'\n\s*\n', full_text) if len(chunk.strip()) > 50]
+        self.tfidf_matrix = self.vectorizer.fit_transform(self.pdf_chunks)
+        self.pdf_loaded = True
+
+        return {'status': 'success', 'pages': num_pages, 'chunks': len(self.pdf_chunks), 'topics': self.extract_key_topics()}
+
+    def extract_key_topics(self, num_topics=5):
+        """Extract crop-related topics from the PDF content"""
+        crop_terms = ['rice', 'wheat', 'corn', 'maize', 'soybean', 'potato', 'yield', 'harvest', 'irrigation', 'fertilizer', 'soil']
+        return [term for term in crop_terms if term.lower() in self.pdf_content.lower()]
+
+    def find_best_chunk(self, query, top_n=3):
+        """Find most relevant chunks for a query"""
+        if not self.pdf_chunks:
+            return []
+        query_vector = self.vectorizer.transform([query])
+        similarities = cosine_similarity(query_vector, self.tfidf_matrix).flatten()
+        top_indices = similarities.argsort()[-top_n:][::-1]
+        return [(self.pdf_chunks[i], similarities[i]) for i in top_indices if similarities[i] > 0.05]
+
+    def answer_query(self, query):
+        """Answer a query using PDF content"""
+        if not self.pdf_loaded:
+            return "Please upload a document first."
+        relevant_chunks = self.find_best_chunk(query)
+        if not relevant_chunks:
+            return "No relevant information found."
+        return "\n\n".join([f"{chunk[:300]}... (Confidence: {'🟢 High' if similarity > 0.3 else '🟡 Medium'})" for chunk, similarity in relevant_chunks])
+
+def main():
+
+    # Initialize session state variables
+    if 'chatbot' not in st.session_state:
+        st.session_state.chatbot = CropYieldChatbot()
+    if 'chat_history' not in st.session_state:
+        st.session_state.chat_history = []
+    if 'pdf_uploaded' not in st.session_state:
+        st.session_state.pdf_uploaded = False
+    
+    st.title("🌾 Agribot")
+
+    # Direct PDF path or file uploader
+    pdf_file_path = r"C:\Users\Suhas\OneDrive\Desktop\Crop_Yeild_Prediction_Using_ML-main\AGRICULTURE.pdf"  #pdf path
+    if pdf_file_path:
+        with st.spinner('Processing ...'):
+            result = st.session_state.chatbot.process_pdf(pdf_file_path)
+            if isinstance(result, str) and result.startswith("Error"):
+                st.error(result)
+            else:
+                st.session_state.pdf_uploaded = True
+                st.success("processed successfully!")
+
+    # Chat interface
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.subheader("Chat With Agribot")
+        for question, answer in st.session_state.chat_history:
+            st.markdown(f"**You asked:** {question}")
+            st.markdown(f"**Response:** {answer}")
+            st.markdown("---")
+    
+    with col2:
+        st.subheader("Ask a Question")
+        user_question = st.text_area("Enter your question:", disabled=not st.session_state.pdf_uploaded)
+        if st.button("Ask", disabled=not st.session_state.pdf_uploaded) and user_question:
+            answer = st.session_state.chatbot.answer_query(user_question)
+            st.session_state.chat_history.append((user_question, answer))
+            st.rerun()
+
+        if st.session_state.pdf_uploaded:
+            st.subheader("Example Questions")
+            example_questions = [
+                "What were the highest crop yields this year?",
+                "How does rainfall affect crop production?",
+                "What are the recommended fertilizers?",
+                "Which crops perform best in drought conditions?"
+            ]
+            for question in example_questions:
+                if st.button(question):
+                    answer = st.session_state.chatbot.answer_query(question)
+                    st.session_state.chat_history.append((question, answer))
+                    st.rerun()
+
 
 if __name__ == "__main__":
     main()
